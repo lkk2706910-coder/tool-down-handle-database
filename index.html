@@ -120,6 +120,25 @@
   .save-status.err   { color: #dc2626; }
   .save-status.busy  { color: #2563eb; }
 
+  .searchbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  #searchInput {
+    flex: 0 1 360px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  #searchInput:focus { outline: none; border-color: #2563eb; }
+  .search-status { font-size: 12px; color: #6b7280; }
+  tr.search-hidden { display: none; }
+  td.search-hit { background: #fff3a0 !important; }
+
   /* ===== AI 助理窗格 ===== */
   #aiFab {
     position: fixed;
@@ -243,6 +262,12 @@
     <span id="saveStatus" class="save-status"></span>
   </div>
 
+  <div class="searchbar">
+    <input id="searchInput" type="search" placeholder="🔍 關鍵字搜尋（跨所有欄位）…" autocomplete="off">
+    <button id="searchClear" class="secondary">清除</button>
+    <span id="searchStatus" class="search-status"></span>
+  </div>
+
   <div class="table-wrap">
     <table id="dataTable">
       <caption>TF2_EQ1</caption>
@@ -301,6 +326,8 @@
   const headerRow = document.getElementById('headerRow');
   const tbody = table.querySelector('tbody');
 
+  let searchActive = false;   // 搜尋進行中時, 表格維持「展開」狀態 (不合併 station)
+
   function headerTitles() {
     return Array.from(headerRow.querySelectorAll('.col-title')).map(s => s.textContent.trim());
   }
@@ -344,6 +371,7 @@
 
   function collapseStation() {
     expandStation();   // 先正規化成展開狀態
+    if (searchActive) return;   // 搜尋中保持展開, 不做 rowspan 合併
     const rows = Array.from(tbody.querySelectorAll('tr'));
     let i = 0;
     while (i < rows.length) {
@@ -409,6 +437,7 @@
         tr.appendChild(td);
       });
     });
+    if (searchActive) applySearch();
     scheduleSave();
   }
 
@@ -426,6 +455,7 @@
         if (tr.children[idx]) tr.children[idx].remove();
       });
     });
+    if (searchActive) applySearch();
     scheduleSave();
   }
 
@@ -441,6 +471,7 @@
       });
       tbody.appendChild(tr);
     });
+    if (searchActive) applySearch();
     scheduleSave();
   }
 
@@ -451,14 +482,55 @@
     headerRow.replaceChild(makeHeaderCell(title), th);
   });
 
-  // 編輯完 station 格 (或任何格) 後重新計算合併; 用 focusout 避免打字中途跳動
-  tbody.addEventListener('focusout', () => {
-    setTimeout(() => { collapseStation(); scheduleSave(); }, 0);
-  });
-  // 欄位標題改名也要存檔 + 更新 label 樣式
-  headerRow.addEventListener('focusout', () => {
-    setTimeout(() => { collapseStation(); scheduleSave(); }, 0);
-  });
+  // ===== 關鍵字搜尋 =====
+  const searchInput  = document.getElementById('searchInput');
+  const searchClear  = document.getElementById('searchClear');
+  const searchStatus = document.getElementById('searchStatus');
+
+  function applySearch() {
+    const q = (searchInput.value || '').trim().toLowerCase();
+    // 清掉上一輪的命中標記
+    tbody.querySelectorAll('td.search-hit').forEach(td => td.classList.remove('search-hit'));
+
+    if (!q) {
+      searchActive = false;
+      tbody.querySelectorAll('tr.search-hidden').forEach(tr => tr.classList.remove('search-hidden'));
+      searchStatus.textContent = '';
+      collapseStation();   // 還原 station 合併
+      return;
+    }
+
+    searchActive = true;
+    expandStation();        // 展開, 讓每列可獨立顯示/隱藏 (避免 rowspan 錯位)
+    let count = 0;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      let hit = false;
+      Array.from(tr.children).forEach(td => {
+        if (td.textContent.toLowerCase().indexOf(q) !== -1) {
+          td.classList.add('search-hit');
+          hit = true;
+        }
+      });
+      tr.classList.toggle('search-hidden', !hit);
+      if (hit) count++;
+    });
+    searchStatus.textContent = count + ' 筆符合' + (count === 0 ? '（無）' : '');
+  }
+  // 給 AI / 其他結構變更後重新套用搜尋
+  window.refreshSearch = function () { if (searchActive) applySearch(); };
+
+  searchInput.addEventListener('input', applySearch);
+  searchClear.addEventListener('click', () => { searchInput.value = ''; applySearch(); searchInput.focus(); });
+
+  // 編輯完任何格後: 搜尋中→重新套用搜尋; 否則→重新計算 station 合併。都會存檔。
+  function afterEdit() {
+    setTimeout(() => {
+      if (searchActive) applySearch(); else collapseStation();
+      scheduleSave();
+    }, 0);
+  }
+  tbody.addEventListener('focusout', afterEdit);
+  headerRow.addEventListener('focusout', afterEdit);
 
   // ===== 資料持久化 (data_store.aspx <-> data.json) =====
   const DATA_URL = 'data_store.aspx';
@@ -720,7 +792,10 @@
       return applied;
     };
     const n = window.withExpanded ? window.withExpanded(run) : run();
-    if (n > 0 && window.scheduleSave) window.scheduleSave();
+    if (n > 0) {
+      if (window.refreshSearch) window.refreshSearch();
+      if (window.scheduleSave) window.scheduleSave();
+    }
     return n;
   }
 
