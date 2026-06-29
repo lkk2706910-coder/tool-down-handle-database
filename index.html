@@ -71,11 +71,15 @@
     white-space: nowrap;
     position: relative;
   }
-  tbody td:first-child,
-  tbody td:nth-child(2) {
+  tbody td.station-cell,
+  tbody td.issue-cell {
     font-weight: bold;
     white-space: nowrap;
     background: #f0f4f8;
+  }
+  tbody td.station-cell {
+    vertical-align: middle;   /* 合併後置中, 對齊整個群組 */
+    text-align: center;
   }
   td[contenteditable], th .col-title[contenteditable] {
     outline: none;
@@ -243,8 +247,8 @@
       </thead>
       <tbody>
         <tr>
-          <td contenteditable="true">RT</td>
-          <td contenteditable="true">RT down</td>
+          <td class="station-cell" contenteditable="true">RT</td>
+          <td class="issue-cell" contenteditable="true">RT down</td>
           <td contenteditable="true">
             <ol>
               <li>確認照紀錄wafer實際位置</li>
@@ -257,8 +261,8 @@
           <td contenteditable="true">PA/THK</td>
         </tr>
         <tr>
-          <td contenteditable="true">FEC</td>
-          <td contenteditable="true">FEC down</td>
+          <td class="station-cell" contenteditable="true">FEC</td>
+          <td class="issue-cell" contenteditable="true">FEC down</td>
           <td contenteditable="true">
             <ol>
               <li>確認照紀錄wafer實際位置 (但凡 FEC DOWN WAFER 佈署省 RUN 完 由 FDC 會)</li>
@@ -287,6 +291,82 @@
   const headerRow = document.getElementById('headerRow');
   const tbody = table.querySelector('tbody');
 
+  function headerTitles() {
+    return Array.from(headerRow.querySelectorAll('.col-title')).map(s => s.textContent.trim());
+  }
+
+  // 依欄位名稱替儲存格加上 label 樣式 (station / issue 兩欄要粗體灰底)
+  function tagLabelCell(td, headerName) {
+    const h = (headerName || '').toLowerCase();
+    td.classList.remove('station-cell', 'issue-cell');
+    if (h === 'station') td.classList.add('station-cell');
+    else if (h === 'issue') td.classList.add('issue-cell');
+  }
+
+  // ===== station 欄相同值自動合併 (rowspan) =====
+  // 模型: 「展開」狀態下每列都有完整的第 0 格 (station);「收合」狀態下
+  //       連續相同 station 的列, 只保留第一列的格子並設 rowspan, 其餘列移除該格。
+  //       因為同群組 station 值相同, 展開時直接用群組值補回即可, 不會遺失資料。
+  function stationText(td) {
+    return td ? td.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+
+  function expandStation() {
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.forEach(tr => {
+      const first = tr.children[0];
+      if (first) first.removeAttribute('rowspan');
+    });
+    rows.forEach(tr => {
+      if (tr.dataset.merged === '1') {
+        let prev = tr.previousElementSibling;
+        while (prev && prev.dataset.merged === '1') prev = prev.previousElementSibling;
+        const val = prev ? stationText(prev.children[0]) : '';
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        tagLabelCell(td, headerTitles()[0]);
+        td.textContent = val;
+        tr.insertBefore(td, tr.firstChild);
+        delete tr.dataset.merged;
+      }
+    });
+  }
+
+  function collapseStation() {
+    expandStation();   // 先正規化成展開狀態
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    let i = 0;
+    while (i < rows.length) {
+      const masterCell = rows[i].children[0];
+      if (!masterCell) { i++; continue; }
+      const val = stationText(masterCell);
+      let j = i + 1;
+      while (j < rows.length && val !== '' && stationText(rows[j].children[0]) === val) j++;
+      const span = j - i;
+      if (span > 1) {
+        masterCell.setAttribute('rowspan', String(span));
+        for (let k = i + 1; k < j; k++) {
+          if (rows[k].children[0]) rows[k].children[0].remove();
+          rows[k].dataset.merged = '1';
+        }
+      }
+      i = j;
+    }
+  }
+
+  // 任何結構變更都包在「展開 → 變更 → 收合」之間, 讓其他程式碼都在完整格線上運作
+  function withExpanded(fn) {
+    expandStation();
+    const r = fn();
+    collapseStation();
+    return r;
+  }
+  // 給 AI 程式區塊使用
+  window.expandStation = expandStation;
+  window.collapseStation = collapseStation;
+  window.withExpanded = withExpanded;
+  window.tagLabelCell = tagLabelCell;
+
   function makeHeaderCell(title) {
     const th = document.createElement('th');
     const span = document.createElement('span');
@@ -310,11 +390,14 @@
   function addColumn() {
     const name = prompt('請輸入新欄位名稱 (Enter new column name):', '新欄位');
     if (name === null) return;
-    headerRow.appendChild(makeHeaderCell(name));
-    tbody.querySelectorAll('tr').forEach(tr => {
-      const td = document.createElement('td');
-      td.contentEditable = 'true';
-      tr.appendChild(td);
+    withExpanded(() => {
+      headerRow.appendChild(makeHeaderCell(name));
+      tbody.querySelectorAll('tr').forEach(tr => {
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        tagLabelCell(td, name);
+        tr.appendChild(td);
+      });
     });
   }
 
@@ -326,20 +409,26 @@
       return;
     }
     if (!confirm('確定刪除欄位「' + th.querySelector('.col-title').textContent + '」？')) return;
-    th.remove();
-    tbody.querySelectorAll('tr').forEach(tr => {
-      if (tr.children[idx]) tr.children[idx].remove();
+    withExpanded(() => {
+      th.remove();
+      tbody.querySelectorAll('tr').forEach(tr => {
+        if (tr.children[idx]) tr.children[idx].remove();
+      });
     });
   }
 
   function addRow() {
-    const tr = document.createElement('tr');
-    for (let i = 0; i < headerRow.children.length; i++) {
-      const td = document.createElement('td');
-      td.contentEditable = 'true';
-      tr.appendChild(td);
-    }
-    tbody.appendChild(tr);
+    withExpanded(() => {
+      const titles = headerTitles();
+      const tr = document.createElement('tr');
+      titles.forEach(title => {
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        tagLabelCell(td, title);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
   }
 
   // Rebuild the initial header cells through makeHeaderCell so they all
@@ -349,8 +438,17 @@
     headerRow.replaceChild(makeHeaderCell(title), th);
   });
 
+  // 編輯完 station 格 (或任何格) 後重新計算合併; 用 focusout 避免打字中途跳動
+  tbody.addEventListener('focusout', () => {
+    // 延後到目前事件結束, 確保 contenteditable 內容已更新
+    setTimeout(() => collapseStation(), 0);
+  });
+
   document.getElementById('addColBtn').addEventListener('click', addColumn);
   document.getElementById('addRowBtn').addEventListener('click', addRow);
+
+  // 初始套用合併 (若初始資料有相同 station 會自動合併)
+  collapseStation();
 </script>
 
   <!-- ===== AI 助理 ===== -->
@@ -404,12 +502,15 @@
     return td.textContent.trim();
   }
   function getTableState() {
+    // 在「展開」狀態下讀取, 確保每列都有完整格線 (含被合併的 station)
+    if (window.expandStation) window.expandStation();
     const headers = headerTitles();
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
       const obj = {};
       Array.from(tr.children).forEach((td, i) => { obj[headers[i] || ('col' + i)] = readCell(td); });
       return obj;
     });
+    if (window.collapseStation) window.collapseStation();
     return {
       title: tableEl.querySelector('caption').textContent.trim(),
       headers: headers,
@@ -429,11 +530,15 @@
       td.textContent = (value == null) ? '' : String(value);
     }
   }
+  function tagLabel(td, header) {
+    if (window.tagLabelCell) window.tagLabelCell(td, header);
+  }
   function addColumnFromAI(name, values) {
     headerRow.appendChild(makeHeaderCell(name || '新欄位'));
     Array.from(tbody.querySelectorAll('tr')).forEach((tr, i) => {
       const td = document.createElement('td');
       td.contentEditable = 'true';
+      tagLabel(td, name);
       setCell(td, values ? values[i] : '');
       tr.appendChild(td);
     });
@@ -444,6 +549,7 @@
     headers.forEach(h => {
       const td = document.createElement('td');
       td.contentEditable = 'true';
+      tagLabel(td, h);
       let val = '';
       if (cells) {
         if (h in cells) val = cells[h];
@@ -458,13 +564,17 @@
     tbody.appendChild(tr);
   }
   function applyActions(actions) {
-    let applied = 0;
-    (actions || []).forEach(a => {
-      if (!a || !a.type) return;
-      if (a.type === 'add_column') { addColumnFromAI(a.name, a.values); applied++; }
-      else if (a.type === 'add_row') { addRowFromAI(a.cells || a.row); applied++; }
-    });
-    return applied;
+    // 包在展開/收合之間, 套用後自動依 station 重新合併
+    const run = () => {
+      let applied = 0;
+      (actions || []).forEach(a => {
+        if (!a || !a.type) return;
+        if (a.type === 'add_column') { addColumnFromAI(a.name, a.values); applied++; }
+        else if (a.type === 'add_row') { addRowFromAI(a.cells || a.row); applied++; }
+      });
+      return applied;
+    };
+    return window.withExpanded ? window.withExpanded(run) : run();
   }
 
   // ---------- 解析 AI 回覆中的 JSON 動作區塊 ----------
