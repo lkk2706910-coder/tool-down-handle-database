@@ -546,17 +546,22 @@
     "規則：add_row 的 cells 的 key 必須對應現有 headers；多步驟內容請用字串陣列 (會自動轉成編號清單)。" +
     "add_column 的 values 依列順序對齊，可省略。若只是回答問題就不要附 json。";
 
-  function buildMessages(userText, state) {
+  function buildMessages(userText, state, images) {
     const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
     history.slice(-8).forEach(h => messages.push({ role: h.role, content: h.text }));
 
+    const hasImg = images && images.length;
     const parts = [];
     parts.push({
       type: 'text',
       text: '【目前表格內容 JSON】\n' + JSON.stringify(state, null, 0) +
-            '\n\n【使用者訊息】\n' + (userText || '(僅附圖片，請判讀並協助新增內容)')
+            '\n\n【使用者訊息】\n' + (userText || '(無文字)') +
+            (hasImg
+              ? '\n\n【附件】使用者附上了 ' + images.length + ' 張截圖。請直接判讀圖片中的表格/內容，' +
+                '抽取出要新增的列或欄並轉成 add_row / add_column 動作，不要反過來要求使用者用文字重述。'
+              : '')
     });
-    pendingImages.forEach(src => parts.push({ type: 'image_url', image_url: { url: src } }));
+    (images || []).forEach(src => parts.push({ type: 'image_url', image_url: { url: src } }));
     messages.push({ role: 'user', content: parts });
     return messages;
   }
@@ -578,7 +583,7 @@
     const thinking = addBubble('assistant', '思考中…');
 
     try {
-      const messages = buildMessages(text, getTableState());
+      const messages = buildMessages(text, getTableState(), imgs);
       const resp = await fetch(AI_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
