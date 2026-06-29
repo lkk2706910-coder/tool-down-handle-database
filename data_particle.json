@@ -1,0 +1,50 @@
+{
+  "title": "Particle Lesson Learn",
+  "headers": ["適用 entity", "Map", "Suspect", "Location", "Action", "機會點"],
+  "rows": [
+    {
+      "適用 entity": "All entity",
+      "Map": "",
+      "Suspect": "Process kits abnormal",
+      "Location": "",
+      "Action": [
+        "Record process kits roughness by SD_PM",
+        "Open chamber 當下需紀錄 process kits gapping，並按原記錄裝回",
+        "自行清洗 target:3，大於 or 量測異常請直接更換",
+        "PA count>80ea 且 map 為對角時，無須再 dummy 直接降溫更換 top liner"
+      ],
+      "機會點": "1.CIP process kits(SA_HARP)"
+    },
+    {
+      "適用 entity": "SACVD_HARP",
+      "Map": "",
+      "Suspect": "Faceplate +Gas feed through",
+      "Location": "",
+      "Action": [
+        "Check mixer 孔洞有無異常",
+        "Faceplate 粗糙度/孔徑是否異常(RA<0.6)",
+        "TEFLON spacer 是否有毛邊(V6 to V7)"
+      ],
+      "機會點": ""
+    },
+    {
+      "適用 entity": "SACVD_HARP",
+      "Map": "",
+      "Suspect": "Heater",
+      "Location": "",
+      "Action": [
+        "Check chucking line 是否 condense powder",
+        "Check heater grounding rod 是否異常 (STI PURGE particle random, single sides)"
+      ],
+      "機會點": ""
+    },
+    {
+      "適用 entity": "SACVD_HARP",
+      "Map": "",
+      "Suspect": "Gas piping(Y-tube to TESOS divert/final weldment)",
+      "Location": "",
+      "Action": ["PA-3 NG trouble shooting guide"],
+      "機會點": ""
+    }
+  ]
+}

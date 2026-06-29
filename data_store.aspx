@@ -4,21 +4,31 @@
 <%@ Import Namespace="System.Text" %>
 <script runat="server">
 
-// 表格資料儲存 — 同資料夾的 data.json 讀/寫。
-//   GET  : 回傳 data.json 內容 (檔案不存在回 204, 前端就用內建預設)
-//   POST : 把 request body (JSON) 覆寫進 data.json
+// 表格資料儲存 — 依分頁 key 讀/寫各自的 JSON 檔。
+//   GET  ?key=xxx : 回傳該分頁資料 (檔案不存在回 204, 前端就用內建預設)
+//   POST ?key=xxx : 把 request body (JSON) 覆寫進該分頁的檔
+//   key 省略或 = "tooldown" -> data.json; 其他 -> data_<key>.json
 //
 // 佈署需求: IIS 應用程式集區身分 (例: IIS AppPool\<站台>) 需對「本資料夾」
-//           或至少 data.json 有「修改/寫入」權限, 否則 POST 會 500。
+//           有「修改/寫入」權限, 否則 POST 會 500。
 // 注意: 此為簡易 last-write-wins 儲存, 多人同時編輯會互相覆蓋, 適合 PoC。
 
-string DataPath { get { return Server.MapPath("data.json"); } }
+string ResolveDataPath()
+{
+    string key = (Request.QueryString["key"] ?? "").Trim();
+    // 只允許英數/底線/連字號, 防止路徑穿越
+    if (key.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z0-9_-]+$"))
+        throw new Exception("非法的 key");
+    string file = (key.Length == 0 || key == "tooldown") ? "data.json" : ("data_" + key + ".json");
+    return Server.MapPath(file);
+}
 
 void Page_Load(object sender, EventArgs e)
 {
     Response.Clear();
     try
     {
+        string DataPath = ResolveDataPath();
         string method = Request.HttpMethod.ToUpperInvariant();
         if (method == "GET")
         {

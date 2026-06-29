@@ -17,6 +17,39 @@
     font-size: 20px;
     margin: 0 0 16px;
   }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #cbd5e1;
+    margin-bottom: 16px;
+  }
+  .tabs .tab {
+    background: #e2e8f0;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: -2px;
+  }
+  .tabs .tab:hover { background: #cbd5e1; }
+  .tabs .tab.active {
+    background: #fff;
+    color: #1f3a5f;
+    border-bottom: 2px solid #fff;
+  }
+  /* 圖片儲存格 (Map / Location 等) */
+  td img.cell-img {
+    max-width: 200px;
+    max-height: 150px;
+    display: inline-block;
+    margin: 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    vertical-align: top;
+  }
   .toolbar {
     margin-bottom: 12px;
     display: flex;
@@ -253,7 +286,12 @@
 </style>
 </head>
 <body>
-  <h1>Tool Down Handle Database</h1>
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-key="tooldown">Tool Down Handle Database</button>
+    <button class="tab" data-key="particle">Particle Lesson Learn</button>
+  </div>
+
+  <h1 id="pageTitle">Tool Down Handle Database</h1>
 
   <div class="toolbar">
     <button id="addColBtn">＋ 新增欄位 (Add Column)</button>
@@ -532,8 +570,14 @@
   tbody.addEventListener('focusout', afterEdit);
   headerRow.addEventListener('focusout', afterEdit);
 
-  // ===== 資料持久化 (data_store.aspx <-> data.json) =====
-  const DATA_URL = 'data_store.aspx';
+  // ===== 分頁 + 資料持久化 (data_store.aspx?key=<tab> <-> data_<tab>.json) =====
+  const TABS = {
+    tooldown: { title: 'Tool Down Handle Database' },
+    particle: { title: 'Particle Lesson Learn' }
+  };
+  let currentKey = 'tooldown';
+  function dataUrl(key) { return 'data_store.aspx?key=' + encodeURIComponent(key); }
+
   const statusEl = document.getElementById('saveStatus');
   let saveTimer = null;
   let suppressSave = false;   // 載入/渲染期間不要觸發存檔
@@ -548,30 +592,83 @@
     return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
 
+  function makeCellImg(src) {
+    const im = document.createElement('img');
+    im.className = 'cell-img';
+    im.src = src;
+    return im;
+  }
+  function appendCellText(td, text) {
+    if (Array.isArray(text)) {
+      if (text.length === 1) { td.appendChild(document.createTextNode(text[0])); return; }
+      const ol = document.createElement('ol');
+      text.forEach(t => { const li = document.createElement('li'); li.textContent = t; ol.appendChild(li); });
+      td.appendChild(ol);
+    } else if (text != null && text !== '') {
+      td.appendChild(document.createTextNode(String(text)));
+    }
+  }
+  // 讀取儲存格 → string | string[] | {text?, images:[dataURL,...]}
   function readCellValue(td) {
+    const imgs = Array.from(td.querySelectorAll('img')).map(im => im.getAttribute('src'));
     const ol = td.querySelector('ol');
+    if (imgs.length) {
+      const obj = { images: imgs };
+      const text = ol
+        ? Array.from(ol.querySelectorAll('li')).map(li => li.textContent.trim())
+        : td.textContent.trim();
+      if (Array.isArray(text) ? text.length : text) obj.text = text;
+      return obj;
+    }
     if (ol) return Array.from(ol.querySelectorAll('li')).map(li => li.textContent.trim());
     return td.textContent.trim();
   }
   function setCellValue(td, value) {
     td.innerHTML = '';
-    if (Array.isArray(value)) {
-      if (value.length === 1) { td.textContent = value[0]; return; }
-      const ol = document.createElement('ol');
-      value.forEach(v => { const li = document.createElement('li'); li.textContent = v; ol.appendChild(li); });
-      td.appendChild(ol);
-    } else {
-      td.textContent = (value == null) ? '' : String(value);
+    if (value == null) return;
+    // 含圖片的 rich cell: {text?, images:[...]} 或 {img:...}
+    if (typeof value === 'object' && !Array.isArray(value) && (value.images || value.img || value.text != null)) {
+      const imgs = value.images || (value.img ? [value.img] : []);
+      appendCellText(td, value.text);
+      imgs.forEach(src => td.appendChild(makeCellImg(src)));
+      return;
     }
+    if (Array.isArray(value)) {
+      const hasImg = value.some(v => v && typeof v === 'object' && (v.img || v.src));
+      if (hasImg) {
+        value.forEach(v => {
+          if (v && typeof v === 'object' && (v.img || v.src)) td.appendChild(makeCellImg(v.img || v.src));
+          else if (v != null && v !== '') { const d = document.createElement('div'); d.textContent = String(v); td.appendChild(d); }
+        });
+        return;
+      }
+      appendCellText(td, value);
+      return;
+    }
+    td.textContent = String(value);
+  }
+  // 給 AI 用: 把圖片 dataURL 換成佔位字串, 避免 base64 灌爆 prompt
+  function stripImagesFromValue(v) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && v.images) {
+      const tag = '[' + v.images.length + ' 張圖片]';
+      const hasText = v.text != null && (Array.isArray(v.text) ? v.text.length : v.text);
+      return hasText ? { text: v.text, images: tag } : tag;
+    }
+    return v;
   }
 
-  // 把整個表格序列化成模型 (headers + rows), 多步驟內容為字串陣列
-  function serializeTable() {
+  // 把整個表格序列化成模型 (headers + rows)。opts.stripImages 給 AI 用 (去掉 base64)
+  function serializeTable(opts) {
+    const strip = opts && opts.stripImages;
     expandStation();
     const headers = headerTitles();
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
       const obj = {};
-      Array.from(tr.children).forEach((td, i) => { obj[headers[i] || ('col' + i)] = readCellValue(td); });
+      Array.from(tr.children).forEach((td, i) => {
+        let v = readCellValue(td);
+        if (strip) v = stripImagesFromValue(v);
+        obj[headers[i] || ('col' + i)] = v;
+      });
       return obj;
     });
     collapseStation();
@@ -618,8 +715,9 @@
   async function saveData() {
     clearTimeout(saveTimer);
     setStatus('儲存中…', 'busy');
+    const key = currentKey;
     try {
-      const resp = await fetch(DATA_URL, {
+      const resp = await fetch(dataUrl(key), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(serializeTable())
@@ -636,8 +734,9 @@
   }
 
   async function loadData() {
+    const key = currentKey;
     try {
-      const resp = await fetch(DATA_URL, { cache: 'no-store' });
+      const resp = await fetch(dataUrl(key), { cache: 'no-store' });
       if (resp.ok) {
         const text = await resp.text();
         if (text && text.trim() && text.trim()[0] === '{') {
@@ -646,13 +745,60 @@
           return;
         }
       }
-      // 204 / 空 / 無檔案 → 沿用頁面內建預設
+      // 204 / 空 / 無檔案 → 用內建預設
+      renderFromData(DEFAULTS[key]);
       setStatus('使用預設資料 (尚未儲存)', '');
     } catch (e) {
-      // file:// 直接開啟或後端未部署 → 沿用內建預設, 不報錯
+      // file:// 直接開啟或後端未部署 → 用內建預設, 不報錯
+      renderFromData(DEFAULTS[key]);
       setStatus('離線模式 (未連到 data_store.aspx)', '');
     }
   }
+
+  async function switchTab(key) {
+    if (key === currentKey || !TABS[key]) return;
+    clearTimeout(saveTimer);
+    await saveData();                 // 先把目前分頁存檔
+    // 清除搜尋狀態
+    searchInput.value = '';
+    searchActive = false;
+    tbody.querySelectorAll('tr.search-hidden').forEach(tr => tr.classList.remove('search-hidden'));
+    tbody.querySelectorAll('td.search-hit').forEach(td => td.classList.remove('search-hit'));
+    searchStatus.textContent = '';
+    currentKey = key;
+    updateTabUI();
+    await loadData();                 // 載入新分頁
+  }
+  function updateTabUI() {
+    document.querySelectorAll('#tabs .tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.key === currentKey));
+    document.getElementById('pageTitle').textContent = TABS[currentKey].title;
+  }
+  document.querySelectorAll('#tabs .tab').forEach(b =>
+    b.addEventListener('click', () => switchTab(b.dataset.key)));
+
+  // 在儲存格內貼上圖片 → 以 base64 data URL 插入 <img> (Map / Location 等欄位)
+  tbody.addEventListener('paste', e => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    let handled = false;
+    for (const it of items) {
+      if (it.type && it.type.indexOf('image') === 0) {
+        const file = it.getAsFile();
+        if (!file) continue;
+        handled = true;
+        const td = document.activeElement && document.activeElement.closest
+          ? document.activeElement.closest('td') : null;
+        const r = new FileReader();
+        r.onload = () => {
+          if (td) td.appendChild(makeCellImg(r.result));
+          collapseStation();
+          scheduleSave();
+        };
+        r.readAsDataURL(file);
+      }
+    }
+    if (handled) e.preventDefault();   // 阻止把檔名/路徑當文字貼進去
+  });
 
   // 給 AI 程式區塊使用
   window.serializeTable = serializeTable;
@@ -662,7 +808,78 @@
   document.getElementById('addRowBtn').addEventListener('click', addRow);
   document.getElementById('saveBtn').addEventListener('click', saveData);
 
-  // 初始套用合併, 再從伺服器載入 (有資料就覆蓋預設)
+  // ===== 各分頁內建預設資料 (伺服器沒有資料時使用) =====
+  const DEFAULTS = {
+    tooldown: {
+      title: 'TF2_EQ1',
+      headers: ['station', 'issue', 'wafer handle', 'EQ handle', 'Monitor item'],
+      rows: [
+        {
+          'station': 'RT', 'issue': 'RT down',
+          'wafer handle': [
+            '確認照紀錄wafer實際位置',
+            'Unload 所有 wafer 回到 FOUP',
+            'RT斷定後，手動建立 UI wafer，再次確認該 wafer 位置',
+            '確認當下狀態解開異常後再回 FOUP'
+          ],
+          'EQ handle': 'check RT硬碟／重設RT電腦',
+          'Monitor item': 'PA/THK'
+        },
+        {
+          'station': 'FEC', 'issue': 'FEC down',
+          'wafer handle': [
+            '確認照紀錄wafer實際位置 (但凡 FEC DOWN WAFER 佈署省 RUN 完 由 FDC 會)',
+            'FEC斷定後，須確認 FEC 產品 RUN 完',
+            '確認當下狀態解開異常後再回 FOUP (有可能 load port 上的產品會在 RUN 完成且移動圖示 RUN 到完 RUN 完，才可 Unload)',
+            'Unload 所有 load port 回到 FOUP'
+          ],
+          'EQ handle': ['check FEC 硬碟', 'check FEC POWER', '重設 FEC 電腦'],
+          'Monitor item': 'THK'
+        }
+      ]
+    },
+    particle: {
+      title: 'Particle Lesson Learn',
+      headers: ['適用 entity', 'Map', 'Suspect', 'Location', 'Action', '機會點'],
+      rows: [
+        {
+          '適用 entity': 'All entity', 'Map': '', 'Suspect': 'Process kits abnormal', 'Location': '',
+          'Action': [
+            'Record process kits roughness by SD_PM',
+            'Open chamber 當下需紀錄 process kits gapping，並按原記錄裝回',
+            '自行清洗 target:3，大於 or 量測異常請直接更換',
+            'PA count>80ea 且 map 為對角時，無須再 dummy 直接降溫更換 top liner'
+          ],
+          '機會點': '1.CIP process kits(SA_HARP)'
+        },
+        {
+          '適用 entity': 'SACVD_HARP', 'Map': '', 'Suspect': 'Faceplate +Gas feed through', 'Location': '',
+          'Action': [
+            'Check mixer 孔洞有無異常',
+            'Faceplate 粗糙度/孔徑是否異常(RA<0.6)',
+            'TEFLON spacer 是否有毛邊(V6 to V7)'
+          ],
+          '機會點': ''
+        },
+        {
+          '適用 entity': 'SACVD_HARP', 'Map': '', 'Suspect': 'Heater', 'Location': '',
+          'Action': [
+            'Check chucking line 是否 condense powder',
+            'Check heater grounding rod 是否異常 (STI PURGE particle random, single sides)'
+          ],
+          '機會點': ''
+        },
+        {
+          '適用 entity': 'SACVD_HARP', 'Map': '', 'Suspect': 'Gas piping(Y-tube to TESOS divert/final weldment)', 'Location': '',
+          'Action': ['PA-3 NG trouble shooting guide'],
+          '機會點': ''
+        }
+      ]
+    }
+  };
+
+  // 初始: 設定分頁外觀, 套用合併, 再從伺服器載入 (有資料就覆蓋預設)
+  updateTabUI();
   collapseStation();
   loadData();
 </script>
@@ -718,8 +935,8 @@
     return td.textContent.trim();
   }
   function getTableState() {
-    // 優先用主程式的序列化器 (已處理 station 合併的展開/收合)
-    if (window.serializeTable) return window.serializeTable();
+    // 優先用主程式的序列化器 (已處理 station 合併 + 去除 base64 圖片)
+    if (window.serializeTable) return window.serializeTable({ stripImages: true });
     if (window.expandStation) window.expandStation();
     const headers = headerTitles();
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
@@ -864,19 +1081,22 @@
 
   // ---------- 送出到 AI ----------
   const SYSTEM_PROMPT =
-    "你是一個嵌在網頁裡的 AI 助理。這個網頁是一份『機台 Tool Down 處理資料庫』表格 (標題 TF2_EQ1)。" +
-    "每次使用者訊息會附上目前表格的完整內容 (JSON, 含 headers 與 rows)，請以此為準回答關於表格的問題。\n\n" +
+    "你是一個嵌在網頁裡的 AI 助理。這個網頁是一份可編輯的機台知識表格資料庫，有多個分頁" +
+    "(例如『Tool Down 處理』與『Particle Lesson Learn』)。每次使用者訊息會附上「目前分頁」" +
+    "的完整內容 (JSON, 含 title / headers / rows)，請完全以此為準, 用對應的 headers 名稱回答與操作。\n\n" +
     "當使用者要求新增資料、或你從附上的截圖辨識出應該加入表格的內容時，請：\n" +
     "1) 先用繁體中文簡短說明你做了什麼；\n" +
     "2) 再附上一段 ```json 程式區塊，格式如下 (只在需要修改表格時才附)：\n" +
     "{\n" +
     '  "actions": [\n' +
-    '    {"type":"add_row","cells":{"station":"RT","issue":"RT down","wafer handle":["步驟1","步驟2"],"EQ handle":"...","Monitor item":"..."}},\n' +
-    '    {"type":"add_column","name":"備註","values":["列1的值","列2的值"]}\n' +
+    '    {"type":"add_row","cells":{"<header1>":"值","<某多步驟欄位>":["步驟1","步驟2"]}},\n' +
+    '    {"type":"add_column","name":"新欄位名","values":["列1的值","列2的值"]}\n' +
     "  ]\n" +
     "}\n" +
-    "規則：add_row 的 cells 的 key 必須對應現有 headers；多步驟內容請用字串陣列 (會自動轉成編號清單)。" +
-    "add_column 的 values 依列順序對齊，可省略。若只是回答問題就不要附 json。";
+    "規則：add_row 的 cells 的 key 必須對應目前分頁的 headers (照抄, 含中英文與空白)；" +
+    "多步驟內容請用字串陣列 (會自動轉成編號清單)。add_column 的 values 依列順序對齊，可省略。\n" +
+    "圖片欄位 (例如 Map / Location) 在 JSON 裡會以 \"[N 張圖片]\" 佔位顯示；你無法新增圖片，" +
+    "圖片需由使用者自行在儲存格內貼上, 所以這類欄位請留空字串。若只是回答問題就不要附 json。";
 
   function buildMessages(userText, state, images) {
     const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
