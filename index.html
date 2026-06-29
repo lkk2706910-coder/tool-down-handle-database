@@ -49,7 +49,40 @@
     border: 1px solid #cbd5e1;
     border-radius: 4px;
     vertical-align: top;
+    cursor: zoom-in;
   }
+  td img.cell-img:hover { box-shadow: 0 0 0 2px #2563eb; }
+  #imgLightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  #imgLightbox.open { display: flex; }
+  #imgLightbox img {
+    max-width: 92vw;
+    max-height: 82vh;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 6px 40px rgba(0, 0, 0, 0.6);
+    cursor: zoom-out;
+  }
+  #imgLightbox .lb-bar { margin-top: 16px; display: flex; gap: 10px; }
+  #imgLightbox .lb-bar button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    border: 1px solid #fff;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+  }
+  #imgLightbox .lb-bar button:hover { background: rgba(255, 255, 255, 0.25); }
+  #imgLightbox .lb-bar .lb-del { border-color: #fca5a5; color: #fecaca; }
+  #imgLightbox .lb-bar .lb-del:hover { background: rgba(220, 38, 38, 0.35); }
   .toolbar {
     margin-bottom: 12px;
     display: flex;
@@ -357,7 +390,16 @@
     </table>
   </div>
 
-  <p class="hint">提示：所有儲存格與欄位標題皆可直接點擊編輯。使用上方按鈕新增欄位或列。</p>
+  <p class="hint">提示：所有儲存格與欄位標題皆可直接點擊編輯。圖片欄位可貼上截圖，點圖可放大。使用上方按鈕新增欄位或列。</p>
+
+  <!-- 圖片放大 lightbox -->
+  <div id="imgLightbox">
+    <img id="lightboxImg" alt="放大圖片">
+    <div class="lb-bar">
+      <button id="lbDelete" class="lb-del">🗑 刪除此圖</button>
+      <button id="lbClose">關閉 (Esc)</button>
+    </div>
+  </div>
 
 <script>
   const table = document.getElementById('dataTable');
@@ -798,6 +840,40 @@
       }
     }
     if (handled) e.preventDefault();   // 阻止把檔名/路徑當文字貼進去
+  });
+
+  // ===== 點擊圖片放大 (lightbox) =====
+  const lightbox    = document.getElementById('imgLightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  let lightboxSource = null;   // 目前放大的原始 <img>, 供刪除用
+
+  function openLightbox(imgEl) {
+    lightboxSource = imgEl;
+    lightboxImg.src = imgEl.src;
+    lightbox.classList.add('open');
+  }
+  function closeLightbox() {
+    lightbox.classList.remove('open');
+    lightboxImg.removeAttribute('src');
+    lightboxSource = null;
+  }
+  tbody.addEventListener('click', e => {
+    const img = e.target.closest ? e.target.closest('img.cell-img') : null;
+    if (img) { e.preventDefault(); openLightbox(img); }
+  });
+  document.getElementById('lbClose').addEventListener('click', closeLightbox);
+  lightboxImg.addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox();
+  });
+  document.getElementById('lbDelete').addEventListener('click', () => {
+    if (lightboxSource) {
+      lightboxSource.remove();
+      collapseStation();
+      scheduleSave();
+    }
+    closeLightbox();
   });
 
   // 給 AI 程式區塊使用
