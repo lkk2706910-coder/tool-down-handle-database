@@ -107,6 +107,118 @@
     color: #6b7280;
     margin: 8px 0 0;
   }
+
+  /* ===== AI 助理窗格 ===== */
+  #aiFab {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    z-index: 1000;
+    padding: 0;
+  }
+  #aiFab:hover { background: #1d4ed8; }
+
+  #aiPanel {
+    position: fixed;
+    right: 24px;
+    bottom: 92px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    height: 540px;
+    max-height: calc(100vh - 120px);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.28);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+  }
+  #aiPanel.open { display: flex; }
+  #aiHeader {
+    background: #1f3a5f;
+    color: #fff;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #aiHeader strong { font-size: 15px; }
+  #aiClose {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 18px;
+    padding: 0 4px;
+  }
+  #aiClose:hover { background: transparent; color: #ffd1d1; }
+  #aiMessages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    background: #f4f6f8;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .ai-msg {
+    margin-bottom: 10px;
+    display: flex;
+  }
+  .ai-msg.user { justify-content: flex-end; }
+  .ai-bubble {
+    max-width: 85%;
+    padding: 8px 11px;
+    border-radius: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ai-msg.user .ai-bubble { background: #2563eb; color: #fff; border-bottom-right-radius: 2px; }
+  .ai-msg.assistant .ai-bubble { background: #fff; border: 1px solid #d6dde4; border-bottom-left-radius: 2px; }
+  .ai-msg.system .ai-bubble { background: #fff7e0; border: 1px solid #f0d48a; color: #7a5b00; font-size: 12px; }
+  .ai-msg .ai-bubble img { max-width: 100%; border-radius: 6px; margin-top: 4px; display: block; }
+  #aiInputArea {
+    border-top: 1px solid #e2e8f0;
+    padding: 8px;
+    background: #fff;
+  }
+  #aiThumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  #aiThumbs .thumb { position: relative; }
+  #aiThumbs img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; }
+  #aiThumbs .thumb button {
+    position: absolute; top: -6px; right: -6px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ef4444; border: none; color: #fff;
+    font-size: 11px; line-height: 1; padding: 0;
+  }
+  #aiInputRow { display: flex; gap: 6px; align-items: flex-end; }
+  #aiInput {
+    flex: 1;
+    resize: none;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    max-height: 120px;
+  }
+  #aiInput:focus { outline: none; border-color: #2563eb; }
+  #aiAttachBtn, #aiSendBtn {
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  #aiAttachBtn { background: #fff; color: #2563eb; border: 1px solid #cbd5e1; }
+  #aiSendBtn:disabled { opacity: 0.5; cursor: default; }
+  #aiHintBar { font-size: 11px; color: #94a3b8; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -239,6 +351,315 @@
 
   document.getElementById('addColBtn').addEventListener('click', addColumn);
   document.getElementById('addRowBtn').addEventListener('click', addRow);
+</script>
+
+  <!-- ===== AI 助理 ===== -->
+  <button id="aiFab" title="AI 助理">🤖</button>
+  <div id="aiPanel" role="dialog" aria-label="AI 助理">
+    <div id="aiHeader">
+      <strong>AI 助理</strong>
+      <button id="aiClose" title="關閉">✕</button>
+    </div>
+    <div id="aiMessages"></div>
+    <div id="aiInputArea">
+      <div id="aiThumbs"></div>
+      <div id="aiInputRow">
+        <button id="aiAttachBtn" title="附加圖片">📎</button>
+        <input id="aiFile" type="file" accept="image/*" multiple style="display:none">
+        <textarea id="aiInput" rows="1" placeholder="問我關於這個表格的問題，或貼上截圖讓我新增內容…"></textarea>
+        <button id="aiSendBtn">送出</button>
+      </div>
+      <div id="aiHintBar">可直接 Ctrl/⌘+V 貼上截圖 · Enter 送出 · Shift+Enter 換行</div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const AI_API_URL = "ai_proxy.aspx";
+
+  const fab      = document.getElementById('aiFab');
+  const panel    = document.getElementById('aiPanel');
+  const closeBtn = document.getElementById('aiClose');
+  const msgsEl   = document.getElementById('aiMessages');
+  const inputEl  = document.getElementById('aiInput');
+  const sendBtn  = document.getElementById('aiSendBtn');
+  const attachBtn= document.getElementById('aiAttachBtn');
+  const fileEl   = document.getElementById('aiFile');
+  const thumbsEl = document.getElementById('aiThumbs');
+
+  const tableEl   = document.getElementById('dataTable');
+  const headerRow = document.getElementById('headerRow');
+  const tbody     = tableEl.querySelector('tbody');
+
+  let pendingImages = [];   // data URL 字串
+  const history = [];       // {role, text} 對話紀錄 (純文字)
+
+  // ---------- 讀取目前表格狀態 ----------
+  function headerTitles() {
+    return Array.from(headerRow.querySelectorAll('.col-title')).map(s => s.textContent.trim());
+  }
+  function readCell(td) {
+    const ol = td.querySelector('ol');
+    if (ol) return Array.from(ol.querySelectorAll('li')).map(li => li.textContent.trim());
+    return td.textContent.trim();
+  }
+  function getTableState() {
+    const headers = headerTitles();
+    const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+      const obj = {};
+      Array.from(tr.children).forEach((td, i) => { obj[headers[i] || ('col' + i)] = readCell(td); });
+      return obj;
+    });
+    return {
+      title: tableEl.querySelector('caption').textContent.trim(),
+      headers: headers,
+      rows: rows
+    };
+  }
+
+  // ---------- 套用 AI 動作到表格 ----------
+  function setCell(td, value) {
+    td.innerHTML = '';
+    if (Array.isArray(value)) {
+      if (value.length === 1) { td.textContent = value[0]; return; }
+      const ol = document.createElement('ol');
+      value.forEach(v => { const li = document.createElement('li'); li.textContent = v; ol.appendChild(li); });
+      td.appendChild(ol);
+    } else {
+      td.textContent = (value == null) ? '' : String(value);
+    }
+  }
+  function addColumnFromAI(name, values) {
+    headerRow.appendChild(makeHeaderCell(name || '新欄位'));
+    Array.from(tbody.querySelectorAll('tr')).forEach((tr, i) => {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      setCell(td, values ? values[i] : '');
+      tr.appendChild(td);
+    });
+  }
+  function addRowFromAI(cells) {
+    const headers = headerTitles();
+    const tr = document.createElement('tr');
+    headers.forEach(h => {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      let val = '';
+      if (cells) {
+        if (h in cells) val = cells[h];
+        else {
+          const k = Object.keys(cells).find(k => k.toLowerCase() === h.toLowerCase());
+          if (k) val = cells[k];
+        }
+      }
+      setCell(td, val);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  function applyActions(actions) {
+    let applied = 0;
+    (actions || []).forEach(a => {
+      if (!a || !a.type) return;
+      if (a.type === 'add_column') { addColumnFromAI(a.name, a.values); applied++; }
+      else if (a.type === 'add_row') { addRowFromAI(a.cells || a.row); applied++; }
+    });
+    return applied;
+  }
+
+  // ---------- 解析 AI 回覆中的 JSON 動作區塊 ----------
+  function extractActions(text) {
+    let actions = [];
+    let clean = text;
+    const re = /```(?:json)?\s*([\s\S]*?)```/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      try {
+        const obj = JSON.parse(m[1].trim());
+        const arr = Array.isArray(obj) ? obj : (obj.actions || (obj.type ? [obj] : []));
+        if (arr && arr.length) {
+          actions = actions.concat(arr);
+          clean = clean.replace(m[0], '').trim();
+        }
+      } catch (e) { /* 不是動作 JSON, 保留原文 */ }
+    }
+    return { actions, clean };
+  }
+
+  // ---------- UI ----------
+  function addBubble(role, text, images) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-msg ' + role;
+    const bubble = document.createElement('div');
+    bubble.className = 'ai-bubble';
+    if (text) bubble.appendChild(document.createTextNode(text));
+    (images || []).forEach(src => {
+      const img = document.createElement('img');
+      img.src = src;
+      bubble.appendChild(img);
+    });
+    wrap.appendChild(bubble);
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return bubble;
+  }
+
+  function renderThumbs() {
+    thumbsEl.innerHTML = '';
+    pendingImages.forEach((src, idx) => {
+      const t = document.createElement('div');
+      t.className = 'thumb';
+      const img = document.createElement('img');
+      img.src = src;
+      const rm = document.createElement('button');
+      rm.textContent = '✕';
+      rm.title = '移除';
+      rm.addEventListener('click', () => { pendingImages.splice(idx, 1); renderThumbs(); });
+      t.appendChild(img);
+      t.appendChild(rm);
+      thumbsEl.appendChild(t);
+    });
+  }
+
+  function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  // ---------- 送出到 AI ----------
+  const SYSTEM_PROMPT =
+    "你是一個嵌在網頁裡的 AI 助理。這個網頁是一份『機台 Tool Down 處理資料庫』表格 (標題 TF2_EQ1)。" +
+    "每次使用者訊息會附上目前表格的完整內容 (JSON, 含 headers 與 rows)，請以此為準回答關於表格的問題。\n\n" +
+    "當使用者要求新增資料、或你從附上的截圖辨識出應該加入表格的內容時，請：\n" +
+    "1) 先用繁體中文簡短說明你做了什麼；\n" +
+    "2) 再附上一段 ```json 程式區塊，格式如下 (只在需要修改表格時才附)：\n" +
+    "{\n" +
+    '  "actions": [\n' +
+    '    {"type":"add_row","cells":{"station":"RT","issue":"RT down","wafer handle":["步驟1","步驟2"],"EQ handle":"...","Monitor item":"..."}},\n' +
+    '    {"type":"add_column","name":"備註","values":["列1的值","列2的值"]}\n' +
+    "  ]\n" +
+    "}\n" +
+    "規則：add_row 的 cells 的 key 必須對應現有 headers；多步驟內容請用字串陣列 (會自動轉成編號清單)。" +
+    "add_column 的 values 依列順序對齊，可省略。若只是回答問題就不要附 json。";
+
+  function buildMessages(userText, state) {
+    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+    history.slice(-8).forEach(h => messages.push({ role: h.role, content: h.text }));
+
+    const parts = [];
+    parts.push({
+      type: 'text',
+      text: '【目前表格內容 JSON】\n' + JSON.stringify(state, null, 0) +
+            '\n\n【使用者訊息】\n' + (userText || '(僅附圖片，請判讀並協助新增內容)')
+    });
+    pendingImages.forEach(src => parts.push({ type: 'image_url', image_url: { url: src } }));
+    messages.push({ role: 'user', content: parts });
+    return messages;
+  }
+
+  async function send() {
+    const text = inputEl.value.trim();
+    if (!text && pendingImages.length === 0) return;
+
+    const imgs = pendingImages.slice();
+    addBubble('user', text, imgs);
+    history.push({ role: 'user', text: text || '(圖片)' });
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    pendingImages = [];
+    renderThumbs();
+
+    sendBtn.disabled = true;
+    const thinking = addBubble('assistant', '思考中…');
+
+    try {
+      const messages = buildMessages(text, getTableState());
+      const resp = await fetch(AI_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: messages })
+      });
+
+      const raw = await resp.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch (e) {}
+
+      if (!resp.ok) {
+        const em = (data && data.error) ? (typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))) : raw;
+        thinking.textContent = '⚠️ 發生錯誤 (' + resp.status + '): ' + em;
+        return;
+      }
+
+      const content = data && data.choices && data.choices[0] &&
+                      data.choices[0].message && data.choices[0].message.content;
+      if (!content) {
+        thinking.textContent = '⚠️ AI 沒有回覆內容。原始回應：' + raw.slice(0, 300);
+        return;
+      }
+
+      const { actions, clean } = extractActions(content);
+      thinking.textContent = clean || content;
+      history.push({ role: 'assistant', text: content });
+
+      if (actions.length) {
+        const n = applyActions(actions);
+        if (n > 0) addBubble('system', '✅ 已套用 ' + n + ' 項表格變更。');
+      }
+    } catch (err) {
+      thinking.textContent = '⚠️ 連線失敗：' + err.message + '（請確認 ai_proxy.aspx 已部署且 web.config 設定正確）';
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  // ---------- 事件 ----------
+  fab.addEventListener('click', () => {
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      if (!msgsEl.dataset.greeted) {
+        addBubble('assistant', '你好！我可以讀懂這個表格的全部內容。你可以問我問題，或直接貼上截圖，我會幫你把內容新增到表格裡。');
+        msgsEl.dataset.greeted = '1';
+      }
+      inputEl.focus();
+    }
+  });
+  closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+  sendBtn.addEventListener('click', send);
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
+
+  // 貼上截圖
+  inputEl.addEventListener('paste', async e => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf('image') === 0) {
+        const file = it.getAsFile();
+        if (file) { pendingImages.push(await fileToDataURL(file)); renderThumbs(); }
+      }
+    }
+  });
+
+  // 附加圖片
+  attachBtn.addEventListener('click', () => fileEl.click());
+  fileEl.addEventListener('change', async () => {
+    for (const f of fileEl.files) {
+      if (f.type.indexOf('image') === 0) pendingImages.push(await fileToDataURL(f));
+    }
+    fileEl.value = '';
+    renderThumbs();
+  });
+})();
 </script>
 </body>
 </html>

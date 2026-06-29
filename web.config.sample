@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  web.config.sample — 樣本檔, 不會被 IIS 載入。
+  部署時:
+    1) 如果該資料夾還沒有 web.config: rename 此檔為 web.config, 把 AiApiKey 填真值
+    2) 如果該資料夾已有 web.config: 把下方 <appSettings> 的 3 個 key 跟
+       <system.web><httpRuntime> 區段 merge 進去
+  AiApiKey 切勿 commit 進 git (web.config 已列入 .gitignore)。
+-->
+<configuration>
+  <appSettings>
+    <!-- AI Gateway 共用設定 (本資料夾下所有 .aspx 都讀這份, 包含 ai_proxy.aspx) -->
+    <add key="AiGatewayUrl" value="http://10.11.197.97/openai/deployments/gpt-5.2/chat/completions" />
+    <add key="AiApiKey"     value="__FILL_IN_YOUR_API_KEY__" />
+    <add key="AiUserId"     value="00047829" />
+  </appSettings>
+
+  <system.web>
+    <!-- AI 回應有時 30-60 秒, 預設 110 秒勉強夠, 拉到 120 比較安全 -->
+    <httpRuntime executionTimeout="120" />
+  </system.web>
+</configuration>

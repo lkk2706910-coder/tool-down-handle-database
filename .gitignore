@@ -1,0 +1,2 @@
+# 含真實 AiApiKey, 切勿 commit。部署時由 web.config.sample 複製產生。
+web.config
