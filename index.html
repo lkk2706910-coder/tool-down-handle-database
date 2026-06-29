@@ -449,9 +449,25 @@
     });
   }
 
+  // 把第一欄相同值的列穩定分組到一起 (依首次出現順序), 讓「重複但不相鄰」的值也能合併
+  function groupRowsByFirstCol() {
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const order = [];           // group keys, first-occurrence order
+    const groups = new Map();
+    let emptySeq = 0;
+    rows.forEach(tr => {
+      const v = stationText(tr.children[0]);
+      const key = (v === '') ? (' empty' + (emptySeq++)) : v;  // empty stays singleton (in place)
+      if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+      groups.get(key).push(tr);
+    });
+    order.forEach(key => groups.get(key).forEach(tr => tbody.appendChild(tr)));
+  }
+
   function collapseStation() {
     expandStation();   // 先正規化成展開狀態
     if (searchActive) return;   // 搜尋中保持展開, 不做 rowspan 合併
+    groupRowsByFirstCol();      // 先把相同值的列聚在一起 (含不相鄰的重複值)
     const rows = Array.from(tbody.querySelectorAll('tr'));
     let i = 0;
     while (i < rows.length) {
