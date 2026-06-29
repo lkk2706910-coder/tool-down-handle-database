@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TF2_EQ1 - Tool Down Handle Database</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Microsoft JhengHei", "PingFang TC", Arial, sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: #f4f6f8;
+    color: #1f2933;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 16px;
+  }
+  .toolbar {
+    margin-bottom: 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    cursor: pointer;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary {
+    background: #fff;
+    color: #2563eb;
+  }
+  button.secondary:hover { background: #eff6ff; }
+  .table-wrap {
+    overflow-x: auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 900px;
+  }
+  caption {
+    caption-side: top;
+    text-align: left;
+    font-weight: bold;
+    font-size: 16px;
+    padding: 12px 12px 0;
+    color: #0f3d91;
+  }
+  th, td {
+    border: 1px solid #c4ccd4;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  thead th {
+    background: #1f3a5f;
+    color: #fff;
+    white-space: nowrap;
+    position: relative;
+  }
+  tbody td:first-child,
+  tbody td:nth-child(2) {
+    font-weight: bold;
+    white-space: nowrap;
+    background: #f0f4f8;
+  }
+  td[contenteditable], th .col-title[contenteditable] {
+    outline: none;
+  }
+  td[contenteditable]:focus {
+    background: #fffbe6 !important;
+    box-shadow: inset 0 0 0 2px #f59e0b;
+  }
+  ol { margin: 0; padding-left: 18px; }
+  .col-title {
+    display: inline-block;
+    min-width: 40px;
+  }
+  .col-title:focus {
+    background: rgba(255,255,255,0.2);
+    box-shadow: inset 0 0 0 1px #fff;
+  }
+  .remove-col {
+    border: none;
+    background: transparent;
+    color: #ffd1d1;
+    font-size: 14px;
+    padding: 0 0 0 6px;
+    line-height: 1;
+  }
+  .remove-col:hover { color: #fff; background: transparent; }
+  .hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 8px 0 0;
+  }
+</style>
+</head>
+<body>
+  <h1>Tool Down Handle Database</h1>
+
+  <div class="toolbar">
+    <button id="addColBtn">＋ 新增欄位 (Add Column)</button>
+    <button id="addRowBtn" class="secondary">＋ 新增列 (Add Row)</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="dataTable">
+      <caption>TF2_EQ1</caption>
+      <thead>
+        <tr id="headerRow">
+          <th><span class="col-title" contenteditable="true">station</span></th>
+          <th><span class="col-title" contenteditable="true">issue</span></th>
+          <th><span class="col-title" contenteditable="true">wafer handle</span></th>
+          <th><span class="col-title" contenteditable="true">EQ handle</span></th>
+          <th><span class="col-title" contenteditable="true">Monitor item</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td contenteditable="true">RT</td>
+          <td contenteditable="true">RT down</td>
+          <td contenteditable="true">
+            <ol>
+              <li>確認照紀錄wafer實際位置</li>
+              <li>Unload 所有 wafer 回到 FOUP</li>
+              <li>RT斷定後，手動建立 UI wafer，再次確認該 wafer 位置</li>
+              <li>確認當下狀態解開異常後再回 FOUP</li>
+            </ol>
+          </td>
+          <td contenteditable="true">check RT硬碟／重設RT電腦</td>
+          <td contenteditable="true">PA/THK</td>
+        </tr>
+        <tr>
+          <td contenteditable="true">FEC</td>
+          <td contenteditable="true">FEC down</td>
+          <td contenteditable="true">
+            <ol>
+              <li>確認照紀錄wafer實際位置 (但凡 FEC DOWN WAFER 佈署省 RUN 完 由 FDC 會)</li>
+              <li>FEC斷定後，須確認 FEC 產品 RUN 完</li>
+              <li>確認當下狀態解開異常後再回 FOUP (有可能 load port 上的產品會在 RUN 完成且移動圖示 RUN 到完 RUN 完，才可 Unload)</li>
+              <li>Unload 所有 load port 回到 FOUP</li>
+            </ol>
+          </td>
+          <td contenteditable="true">
+            <ol>
+              <li>check FEC 硬碟</li>
+              <li>check FEC POWER</li>
+              <li>重設 FEC 電腦</li>
+            </ol>
+          </td>
+          <td contenteditable="true">THK</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="hint">提示：所有儲存格與欄位標題皆可直接點擊編輯。使用上方按鈕新增欄位或列。</p>
+
+<script>
+  const table = document.getElementById('dataTable');
+  const headerRow = document.getElementById('headerRow');
+  const tbody = table.querySelector('tbody');
+
+  function makeHeaderCell(title) {
+    const th = document.createElement('th');
+    const span = document.createElement('span');
+    span.className = 'col-title';
+    span.contentEditable = 'true';
+    span.textContent = title;
+    const remove = document.createElement('button');
+    remove.className = 'remove-col';
+    remove.title = '刪除此欄位';
+    remove.textContent = '✕';
+    remove.addEventListener('click', () => removeColumn(th));
+    th.appendChild(span);
+    th.appendChild(remove);
+    return th;
+  }
+
+  function columnIndex(th) {
+    return Array.from(headerRow.children).indexOf(th);
+  }
+
+  function addColumn() {
+    const name = prompt('請輸入新欄位名稱 (Enter new column name):', '新欄位');
+    if (name === null) return;
+    headerRow.appendChild(makeHeaderCell(name));
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      tr.appendChild(td);
+    });
+  }
+
+  function removeColumn(th) {
+    const idx = columnIndex(th);
+    if (idx < 0) return;
+    if (headerRow.children.length <= 1) {
+      alert('至少需保留一個欄位。');
+      return;
+    }
+    if (!confirm('確定刪除欄位「' + th.querySelector('.col-title').textContent + '」？')) return;
+    th.remove();
+    tbody.querySelectorAll('tr').forEach(tr => {
+      if (tr.children[idx]) tr.children[idx].remove();
+    });
+  }
+
+  function addRow() {
+    const tr = document.createElement('tr');
+    for (let i = 0; i < headerRow.children.length; i++) {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+
+  // Rebuild the initial header cells through makeHeaderCell so they all
+  // share the same markup (editable title + remove button).
+  Array.from(headerRow.children).forEach(th => {
+    const title = th.querySelector('.col-title').textContent;
+    headerRow.replaceChild(makeHeaderCell(title), th);
+  });
+
+  document.getElementById('addColBtn').addEventListener('click', addColumn);
+  document.getElementById('addRowBtn').addEventListener('click', addRow);
+</script>
+</body>
+</html>
