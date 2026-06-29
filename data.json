@@ -1,0 +1,30 @@
+{
+  "title": "TF2_EQ1",
+  "headers": ["station", "issue", "wafer handle", "EQ handle", "Monitor item"],
+  "rows": [
+    {
+      "station": "RT",
+      "issue": "RT down",
+      "wafer handle": [
+        "確認照紀錄wafer實際位置",
+        "Unload 所有 wafer 回到 FOUP",
+        "RT斷定後，手動建立 UI wafer，再次確認該 wafer 位置",
+        "確認當下狀態解開異常後再回 FOUP"
+      ],
+      "EQ handle": "check RT硬碟／重設RT電腦",
+      "Monitor item": "PA/THK"
+    },
+    {
+      "station": "FEC",
+      "issue": "FEC down",
+      "wafer handle": [
+        "確認照紀錄wafer實際位置 (但凡 FEC DOWN WAFER 佈署省 RUN 完 由 FDC 會)",
+        "FEC斷定後，須確認 FEC 產品 RUN 完",
+        "確認當下狀態解開異常後再回 FOUP (有可能 load port 上的產品會在 RUN 完成且移動圖示 RUN 到完 RUN 完，才可 Unload)",
+        "Unload 所有 load port 回到 FOUP"
+      ],
+      "EQ handle": ["check FEC 硬碟", "check FEC POWER", "重設 FEC 電腦"],
+      "Monitor item": "THK"
+    }
+  ]
+}

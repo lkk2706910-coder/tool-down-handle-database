@@ -111,6 +111,14 @@
     color: #6b7280;
     margin: 8px 0 0;
   }
+  .save-status {
+    font-size: 12px;
+    color: #6b7280;
+    align-self: center;
+  }
+  .save-status.ok    { color: #16a34a; }
+  .save-status.err   { color: #dc2626; }
+  .save-status.busy  { color: #2563eb; }
 
   /* ===== AI 助理窗格 ===== */
   #aiFab {
@@ -231,6 +239,8 @@
   <div class="toolbar">
     <button id="addColBtn">＋ 新增欄位 (Add Column)</button>
     <button id="addRowBtn" class="secondary">＋ 新增列 (Add Row)</button>
+    <button id="saveBtn" class="secondary">💾 儲存 (Save)</button>
+    <span id="saveStatus" class="save-status"></span>
   </div>
 
   <div class="table-wrap">
@@ -399,6 +409,7 @@
         tr.appendChild(td);
       });
     });
+    scheduleSave();
   }
 
   function removeColumn(th) {
@@ -415,6 +426,7 @@
         if (tr.children[idx]) tr.children[idx].remove();
       });
     });
+    scheduleSave();
   }
 
   function addRow() {
@@ -429,6 +441,7 @@
       });
       tbody.appendChild(tr);
     });
+    scheduleSave();
   }
 
   // Rebuild the initial header cells through makeHeaderCell so they all
@@ -440,15 +453,146 @@
 
   // 編輯完 station 格 (或任何格) 後重新計算合併; 用 focusout 避免打字中途跳動
   tbody.addEventListener('focusout', () => {
-    // 延後到目前事件結束, 確保 contenteditable 內容已更新
-    setTimeout(() => collapseStation(), 0);
+    setTimeout(() => { collapseStation(); scheduleSave(); }, 0);
   });
+  // 欄位標題改名也要存檔 + 更新 label 樣式
+  headerRow.addEventListener('focusout', () => {
+    setTimeout(() => { collapseStation(); scheduleSave(); }, 0);
+  });
+
+  // ===== 資料持久化 (data_store.aspx <-> data.json) =====
+  const DATA_URL = 'data_store.aspx';
+  const statusEl = document.getElementById('saveStatus');
+  let saveTimer = null;
+  let suppressSave = false;   // 載入/渲染期間不要觸發存檔
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text || '';
+    statusEl.className = 'save-status' + (cls ? ' ' + cls : '');
+  }
+  function nowStr() {
+    const d = new Date();
+    const p = n => (n < 10 ? '0' : '') + n;
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function readCellValue(td) {
+    const ol = td.querySelector('ol');
+    if (ol) return Array.from(ol.querySelectorAll('li')).map(li => li.textContent.trim());
+    return td.textContent.trim();
+  }
+  function setCellValue(td, value) {
+    td.innerHTML = '';
+    if (Array.isArray(value)) {
+      if (value.length === 1) { td.textContent = value[0]; return; }
+      const ol = document.createElement('ol');
+      value.forEach(v => { const li = document.createElement('li'); li.textContent = v; ol.appendChild(li); });
+      td.appendChild(ol);
+    } else {
+      td.textContent = (value == null) ? '' : String(value);
+    }
+  }
+
+  // 把整個表格序列化成模型 (headers + rows), 多步驟內容為字串陣列
+  function serializeTable() {
+    expandStation();
+    const headers = headerTitles();
+    const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+      const obj = {};
+      Array.from(tr.children).forEach((td, i) => { obj[headers[i] || ('col' + i)] = readCellValue(td); });
+      return obj;
+    });
+    collapseStation();
+    return { title: table.querySelector('caption').textContent.trim(), headers: headers, rows: rows };
+  }
+
+  // 依模型重建整個表格
+  function renderFromData(data) {
+    if (!data || !Array.isArray(data.headers)) return false;
+    suppressSave = true;
+    if (data.title) table.querySelector('caption').textContent = data.title;
+    headerRow.innerHTML = '';
+    data.headers.forEach(h => headerRow.appendChild(makeHeaderCell(h)));
+    tbody.innerHTML = '';
+    (data.rows || []).forEach(row => {
+      const tr = document.createElement('tr');
+      data.headers.forEach(h => {
+        const td = document.createElement('td');
+        td.contentEditable = 'true';
+        tagLabelCell(td, h);
+        let v = '';
+        if (h in row) v = row[h];
+        else {
+          const k = Object.keys(row).find(k => k.toLowerCase() === h.toLowerCase());
+          if (k) v = row[k];
+        }
+        setCellValue(td, v);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    collapseStation();
+    suppressSave = false;
+    return true;
+  }
+
+  function scheduleSave() {
+    if (suppressSave) return;
+    clearTimeout(saveTimer);
+    setStatus('● 待儲存…', 'busy');
+    saveTimer = setTimeout(saveData, 800);
+  }
+
+  async function saveData() {
+    clearTimeout(saveTimer);
+    setStatus('儲存中…', 'busy');
+    try {
+      const resp = await fetch(DATA_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serializeTable())
+      });
+      if (resp.ok) setStatus('✓ 已儲存 ' + nowStr(), 'ok');
+      else {
+        const t = await resp.text();
+        setStatus('✕ 儲存失敗 (' + resp.status + ')', 'err');
+        console.error('save failed:', resp.status, t);
+      }
+    } catch (e) {
+      setStatus('✕ 無法連線儲存 (' + e.message + ')', 'err');
+    }
+  }
+
+  async function loadData() {
+    try {
+      const resp = await fetch(DATA_URL, { cache: 'no-store' });
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text && text.trim() && text.trim()[0] === '{') {
+          renderFromData(JSON.parse(text));
+          setStatus('已載入伺服器資料', 'ok');
+          return;
+        }
+      }
+      // 204 / 空 / 無檔案 → 沿用頁面內建預設
+      setStatus('使用預設資料 (尚未儲存)', '');
+    } catch (e) {
+      // file:// 直接開啟或後端未部署 → 沿用內建預設, 不報錯
+      setStatus('離線模式 (未連到 data_store.aspx)', '');
+    }
+  }
+
+  // 給 AI 程式區塊使用
+  window.serializeTable = serializeTable;
+  window.scheduleSave = scheduleSave;
 
   document.getElementById('addColBtn').addEventListener('click', addColumn);
   document.getElementById('addRowBtn').addEventListener('click', addRow);
+  document.getElementById('saveBtn').addEventListener('click', saveData);
 
-  // 初始套用合併 (若初始資料有相同 station 會自動合併)
+  // 初始套用合併, 再從伺服器載入 (有資料就覆蓋預設)
   collapseStation();
+  loadData();
 </script>
 
   <!-- ===== AI 助理 ===== -->
@@ -502,7 +646,8 @@
     return td.textContent.trim();
   }
   function getTableState() {
-    // 在「展開」狀態下讀取, 確保每列都有完整格線 (含被合併的 station)
+    // 優先用主程式的序列化器 (已處理 station 合併的展開/收合)
+    if (window.serializeTable) return window.serializeTable();
     if (window.expandStation) window.expandStation();
     const headers = headerTitles();
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
@@ -574,7 +719,9 @@
       });
       return applied;
     };
-    return window.withExpanded ? window.withExpanded(run) : run();
+    const n = window.withExpanded ? window.withExpanded(run) : run();
+    if (n > 0 && window.scheduleSave) window.scheduleSave();
+    return n;
   }
 
   // ---------- 解析 AI 回覆中的 JSON 動作區塊 ----------
