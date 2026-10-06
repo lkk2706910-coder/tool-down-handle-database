@@ -52,6 +52,26 @@
     cursor: zoom-in;
   }
   td img.cell-img:hover { box-shadow: 0 0 0 2px #2563eb; }
+  /* 尾端「操作」欄 (刪除列按鈕) */
+  th.action-col, td.action-col {
+    width: 34px;
+    min-width: 34px;
+    text-align: center;
+    padding: 4px;
+    background: #f8fafc;
+  }
+  td.action-col { vertical-align: middle; }
+  .row-del {
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  tbody tr:hover .row-del { color: #ef4444; }
+  .row-del:hover { background: #fee2e2; color: #dc2626; }
   #imgLightbox {
     position: fixed;
     inset: 0;
@@ -521,16 +541,48 @@
     return Array.from(headerRow.children).indexOf(th);
   }
 
+  // 尾端「操作」欄 (每列一個刪除鈕)。此欄不屬於資料模型:
+  // 不算進 headerTitles / 不被序列化 / 不參與 station 合併。
+  function makeActionHeader() {
+    const th = document.createElement('th');
+    th.className = 'action-col';
+    return th;
+  }
+  function makeActionCell() {
+    const td = document.createElement('td');
+    td.className = 'action-col';
+    td.contentEditable = 'false';
+    const btn = document.createElement('button');
+    btn.className = 'row-del';
+    btn.title = '刪除此列';
+    btn.textContent = '✕';
+    td.appendChild(btn);
+    return td;
+  }
+  function actionTh() { return headerRow.querySelector('th.action-col'); }
+  function ensureActionHeader() {
+    if (!actionTh()) headerRow.appendChild(makeActionHeader());
+  }
+
+  function deleteRow(tr) {
+    if (!tr) return;
+    if (!confirm('確定刪除此列？')) return;
+    withExpanded(() => { tr.remove(); });   // 展開後刪除, 再重新合併
+    if (searchActive) applySearch();
+    scheduleSave();
+  }
+
   function addColumn() {
     const name = prompt('請輸入新欄位名稱 (Enter new column name):', '新欄位');
     if (name === null) return;
     withExpanded(() => {
-      headerRow.appendChild(makeHeaderCell(name));
+      const at = actionTh();
+      headerRow.insertBefore(makeHeaderCell(name), at);   // 插在「操作」欄之前
       tbody.querySelectorAll('tr').forEach(tr => {
         const td = document.createElement('td');
         td.contentEditable = 'true';
         tagLabelCell(td, name);
-        tr.appendChild(td);
+        tr.insertBefore(td, tr.querySelector('td.action-col'));
       });
     });
     if (searchActive) applySearch();
@@ -540,7 +592,7 @@
   function removeColumn(th) {
     const idx = columnIndex(th);
     if (idx < 0) return;
-    if (headerRow.children.length <= 1) {
+    if (headerRow.querySelectorAll('.col-title').length <= 1) {
       alert('至少需保留一個欄位。');
       return;
     }
@@ -565,6 +617,7 @@
         tagLabelCell(td, title);
         tr.appendChild(td);
       });
+      tr.appendChild(makeActionCell());
       tbody.appendChild(tr);
     });
     if (searchActive) applySearch();
@@ -602,6 +655,7 @@
     tbody.querySelectorAll('tr').forEach(tr => {
       let hit = false;
       Array.from(tr.children).forEach(td => {
+        if (td.classList.contains('action-col')) return;   // 操作欄不列入搜尋
         if (td.textContent.toLowerCase().indexOf(q) !== -1) {
           td.classList.add('search-hit');
           hit = true;
@@ -722,10 +776,13 @@
     const headers = headerTitles();
     const rows = Array.from(tbody.querySelectorAll('tr')).map(tr => {
       const obj = {};
-      Array.from(tr.children).forEach((td, i) => {
+      let i = 0;
+      Array.from(tr.children).forEach(td => {
+        if (td.classList.contains('action-col')) return;   // 跳過「操作」欄
         let v = readCellValue(td);
         if (strip) v = stripImagesFromValue(v);
         obj[headers[i] || ('col' + i)] = v;
+        i++;
       });
       return obj;
     });
@@ -740,6 +797,7 @@
     if (data.title) table.querySelector('caption').textContent = data.title;
     headerRow.innerHTML = '';
     data.headers.forEach(h => headerRow.appendChild(makeHeaderCell(h)));
+    headerRow.appendChild(makeActionHeader());
     tbody.innerHTML = '';
     (data.rows || []).forEach(row => {
       const tr = document.createElement('tr');
@@ -756,6 +814,7 @@
         setCellValue(td, v);
         tr.appendChild(td);
       });
+      tr.appendChild(makeActionCell());
       tbody.appendChild(tr);
     });
     collapseStation();
@@ -874,6 +933,8 @@
     lightboxSource = null;
   }
   tbody.addEventListener('click', e => {
+    const del = e.target.closest ? e.target.closest('.row-del') : null;
+    if (del) { e.preventDefault(); deleteRow(del.closest('tr')); return; }
     const img = e.target.closest ? e.target.closest('img.cell-img') : null;
     if (img) { e.preventDefault(); openLightbox(img); }
   });
@@ -895,6 +956,7 @@
   // 給 AI 程式區塊使用
   window.serializeTable = serializeTable;
   window.scheduleSave = scheduleSave;
+  window.makeActionCell = makeActionCell;
 
   document.getElementById('addColBtn').addEventListener('click', addColumn);
   document.getElementById('addRowBtn').addEventListener('click', addRow);
@@ -1060,13 +1122,13 @@
     if (window.tagLabelCell) window.tagLabelCell(td, header);
   }
   function addColumnFromAI(name, values) {
-    headerRow.appendChild(makeHeaderCell(name || '新欄位'));
+    headerRow.insertBefore(makeHeaderCell(name || '新欄位'), headerRow.querySelector('th.action-col'));
     Array.from(tbody.querySelectorAll('tr')).forEach((tr, i) => {
       const td = document.createElement('td');
       td.contentEditable = 'true';
       tagLabel(td, name);
       setCell(td, values ? values[i] : '');
-      tr.appendChild(td);
+      tr.insertBefore(td, tr.querySelector('td.action-col'));
     });
   }
   function addRowFromAI(cells) {
@@ -1087,6 +1149,7 @@
       setCell(td, val);
       tr.appendChild(td);
     });
+    if (window.makeActionCell) tr.appendChild(window.makeActionCell());
     tbody.appendChild(tr);
   }
   function applyActions(actions) {
