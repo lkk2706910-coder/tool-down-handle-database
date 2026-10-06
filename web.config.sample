@@ -20,6 +20,9 @@
     <add key="AiUserId"     value="00047829" />
     <!-- body 必帶的 model 名; 由 ai_proxy.aspx 注入到 request body -->
     <add key="AiModel"      value="gpt-5.2" />
+    <!-- (選用) 若 gateway 憑證不被本機信任 (自簽/內部 CA, 出現
+         "Could not create SSL/TLS secure channel" 或憑證信任錯誤) 才設 true -->
+    <!-- <add key="AiInsecureSkipVerify" value="true" /> -->
   </appSettings>
 
   <system.web>

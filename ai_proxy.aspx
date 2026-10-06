@@ -3,6 +3,8 @@
 <%@ Import Namespace="System.Configuration" %>
 <%@ Import Namespace="System.IO" %>
 <%@ Import Namespace="System.Net" %>
+<%@ Import Namespace="System.Net.Security" %>
+<%@ Import Namespace="System.Security.Cryptography.X509Certificates" %>
 <%@ Import Namespace="System.Text" %>
 <script runat="server">
 
@@ -48,6 +50,17 @@ void Page_Load(object sender, EventArgs e)
         if (string.IsNullOrEmpty(apiKey))      throw new ConfigurationErrorsException("AiApiKey appSetting 未設定 (web.config)");
         if (string.IsNullOrEmpty(userId))      throw new ConfigurationErrorsException("AiUserId appSetting 未設定 (web.config)");
         if (string.IsNullOrEmpty(model))       throw new ConfigurationErrorsException("AiModel appSetting 未設定 (web.config)");
+
+        // 啟用 TLS 1.2 (+1.1/1.0)。舊版 .NET 預設只用 SSL3/TLS1.0, 連 https gateway
+        // 會報 "Could not create SSL/TLS secure channel"。3072=TLS1.2 768=TLS1.1 192=TLS1.0
+        try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)(3072 | 768 | 192); }
+        catch { try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { } }
+
+        // (選用) 跳過憑證驗證 — 只有在內網 gateway 憑證不被本機信任 (自簽/內部 CA) 時才開。
+        // web.config 加 <add key="AiInsecureSkipVerify" value="true" />
+        if (string.Equals(GetSetting("AiInsecureSkipVerify", "false"), "true", StringComparison.OrdinalIgnoreCase))
+            ServicePointManager.ServerCertificateValidationCallback =
+                delegate(object s2, X509Certificate c2, X509Chain ch2, SslPolicyErrors er2) { return true; };
 
         HttpWebRequest req = (HttpWebRequest)WebRequest.Create(upstreamUrl);
         req.Method      = Request.HttpMethod;
