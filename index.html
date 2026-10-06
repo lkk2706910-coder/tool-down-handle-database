@@ -1238,6 +1238,17 @@
       let data = null;
       try { data = JSON.parse(raw); } catch (e) {}
 
+      // 未登入 (proxy 回 HTTP 200 + ok:false)
+      if (data && data.ok === false && data.error === 'needLogin') {
+        thinking.textContent = '🔒 尚未登入或登入逾時，無法使用 AI。請重新整理頁面以重新登入後再試一次。';
+        return;
+      }
+      // proxy 自己的錯誤 (HTTP 200 + ok:false + 其他 error)
+      if (data && data.ok === false && data.error) {
+        thinking.textContent = '⚠️ 發生錯誤：' + data.error;
+        return;
+      }
+
       if (!resp.ok) {
         const em = (data && data.error) ? (typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error))) : raw;
         thinking.textContent = '⚠️ 發生錯誤 (' + resp.status + '): ' + em;

@@ -3,27 +3,51 @@
 <%@ Import Namespace="System.Configuration" %>
 <%@ Import Namespace="System.IO" %>
 <%@ Import Namespace="System.Net" %>
+<%@ Import Namespace="System.Text" %>
 <script runat="server">
 
 // AI 聊天 proxy — same-origin .aspx 借既有 IIS auth 設定避開 CORS 與 Windows Auth 質疑。
 //
-// 部署:
-//   1) 把本檔丟到跟 index.html 同一資料夾
-//   2) 在該資料夾的 web.config 裡加上 AiGatewayUrl / AiApiKey / AiUserId 三個 appSettings
-//      (參考 repo 內 web.config.sample)
+// 流程: 瀏覽器 POST {messages:[...]} -> 本 proxy -> 內網 AI Gateway
+//        (OpenAI chat-completions 相容介面, LiteLLM)
+//
+// 設定全部放伺服器 web.config appSettings, 瀏覽器永遠拿不到:
+//   AiGatewayUrl : 例 https://f12asddllmlog.umc.com/chat/completions
+//   AiApiKey     : 驗證用 api-key header
+//   AiUserId     : 驗證用 user-id header (工號)
+//   AiModel      : body 必帶的 model 名 (由本 proxy 注入到 request body)
+//
+// 行為:
+//   - 先驗登入: 沒登入回 HTTP 200 + {"ok":false,"error":"needLogin"}
+//   - 把 AiModel 注入進 request body 的 JSON (瀏覽器不需要也不知道 model)
+//   - 上游 4xx/5xx 原文轉回; 連不上回 502
+//
 // 前端: const AI_API_URL = "ai_proxy.aspx";
 
 void Page_Load(object sender, EventArgs e)
 {
     Response.Clear();
+
+    // --- 先驗登入 ---
+    if (!Request.IsAuthenticated)
+    {
+        Response.StatusCode  = 200;
+        Response.ContentType = "application/json; charset=utf-8";
+        Response.Write("{\"ok\":false,\"error\":\"needLogin\"}");
+        Response.End();
+        return;
+    }
+
     try
     {
         string upstreamUrl = GetSetting("AiGatewayUrl", null);
         string apiKey      = GetSetting("AiApiKey",     null);
         string userId      = GetSetting("AiUserId",     null);
+        string model       = GetSetting("AiModel",      null);
         if (string.IsNullOrEmpty(upstreamUrl)) throw new ConfigurationErrorsException("AiGatewayUrl appSetting 未設定 (web.config)");
         if (string.IsNullOrEmpty(apiKey))      throw new ConfigurationErrorsException("AiApiKey appSetting 未設定 (web.config)");
         if (string.IsNullOrEmpty(userId))      throw new ConfigurationErrorsException("AiUserId appSetting 未設定 (web.config)");
+        if (string.IsNullOrEmpty(model))       throw new ConfigurationErrorsException("AiModel appSetting 未設定 (web.config)");
 
         HttpWebRequest req = (HttpWebRequest)WebRequest.Create(upstreamUrl);
         req.Method      = Request.HttpMethod;
@@ -35,8 +59,17 @@ void Page_Load(object sender, EventArgs e)
 
         if (req.Method == "POST" || req.Method == "PUT")
         {
+            // 讀出瀏覽器送來的 body, 注入 model, 再轉送
+            string body;
+            using (StreamReader sr = new StreamReader(Request.InputStream, Encoding.UTF8))
+                body = sr.ReadToEnd();
+
+            body = InjectModel(body, model);
+
+            byte[] bytes = Encoding.UTF8.GetBytes(body);
+            req.ContentLength = bytes.Length;
             Stream reqStream = req.GetRequestStream();
-            try { CopyStream(Request.InputStream, reqStream); }
+            try { reqStream.Write(bytes, 0, bytes.Length); }
             finally { reqStream.Close(); }
         }
 
@@ -53,7 +86,7 @@ void Page_Load(object sender, EventArgs e)
     }
     catch (WebException wex)
     {
-        // 上游 4xx/5xx 也轉回 browser, 否則前端只看到一個沒資訊的 5xx
+        // 上游 4xx/5xx 也原文轉回 browser, 否則前端只看到一個沒資訊的 5xx
         HttpWebResponse res = wex.Response as HttpWebResponse;
         if (res != null)
         {
@@ -73,6 +106,35 @@ void Page_Load(object sender, EventArgs e)
         WriteJsonError(500, ex.GetType().Name + ": " + ex.Message);
     }
     Response.End();
+}
+
+// 把 "model":"..." 注入進 JSON body 的最外層物件 (插在第一個 '{' 之後)。
+// body 若已含 model 就不重複加。
+static string InjectModel(string body, string model)
+{
+    if (body == null) body = "";
+    string trimmed = body.TrimStart();
+    int brace = body.IndexOf('{');
+    if (brace < 0) return body;                       // 不是 JSON 物件, 原樣送出
+    if (HasTopLevelModel(trimmed)) return body;       // 已帶 model, 不覆蓋
+
+    string rest = body.Substring(brace + 1);
+    string sep  = rest.TrimStart().StartsWith("}") ? "" : ",";
+    string field = "\"model\":\"" + JsonEsc(model) + "\"" + sep;
+    return body.Substring(0, brace + 1) + field + rest;
+}
+
+static bool HasTopLevelModel(string trimmed)
+{
+    // 粗略判斷: body 一開頭就是 {"model": 或 { "model":
+    string s = trimmed.Length > 0 && trimmed[0] == '{' ? trimmed.Substring(1).TrimStart() : trimmed;
+    return s.StartsWith("\"model\"");
+}
+
+static string JsonEsc(string s)
+{
+    if (s == null) return "";
+    return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }
 
 static string GetSetting(string key, string fallback)
@@ -95,9 +157,9 @@ static void CopyStream(Stream src, Stream dst)
 void WriteJsonError(int status, string msg)
 {
     Response.StatusCode  = status;
-    Response.ContentType = "application/json";
+    Response.ContentType = "application/json; charset=utf-8";
     string safe = msg.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", " ");
-    Response.Write("{\"error\":\"" + safe + "\"}");
+    Response.Write("{\"ok\":false,\"error\":\"" + safe + "\"}");
 }
 
 </script>

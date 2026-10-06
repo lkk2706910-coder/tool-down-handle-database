@@ -3,16 +3,23 @@
   web.config.sample — 樣本檔, 不會被 IIS 載入。
   部署時:
     1) 如果該資料夾還沒有 web.config: rename 此檔為 web.config, 把 AiApiKey 填真值
-    2) 如果該資料夾已有 web.config: 把下方 <appSettings> 的 3 個 key 跟
+    2) 如果該資料夾已有 web.config: 把下方 <appSettings> 的 4 個 key 跟
        <system.web><httpRuntime> 區段 merge 進去
   AiApiKey 切勿 commit 進 git (web.config 已列入 .gitignore)。
+
+  登入驗證: ai_proxy.aspx 會用 Request.IsAuthenticated 檢查登入, 沒登入回
+  {"ok":false,"error":"needLogin"}。請在 IIS 對本站台開啟 Windows 驗證
+  (Windows Authentication) 讓使用者帶身分進來; 關掉匿名或兩者並存皆可。
 -->
 <configuration>
   <appSettings>
     <!-- AI Gateway 共用設定 (本資料夾下所有 .aspx 都讀這份, 包含 ai_proxy.aspx) -->
-    <add key="AiGatewayUrl" value="http://10.11.197.97/openai/deployments/gpt-5.2/chat/completions" />
+    <!-- LiteLLM / OpenAI chat-completions 相容介面 -->
+    <add key="AiGatewayUrl" value="https://f12asddllmlog.umc.com/chat/completions" />
     <add key="AiApiKey"     value="__FILL_IN_YOUR_API_KEY__" />
     <add key="AiUserId"     value="00047829" />
+    <!-- body 必帶的 model 名; 由 ai_proxy.aspx 注入到 request body -->
+    <add key="AiModel"      value="gpt-5.2" />
   </appSettings>
 
   <system.web>
