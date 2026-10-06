@@ -68,7 +68,10 @@ void Page_Load(object sender, EventArgs e)
         req.Accept      = "*/*";
         req.Headers["api-key"] = apiKey;
         req.Headers["user-id"] = userId;
+        req.UserAgent   = "ToolDownAI-Proxy/1.0";  // 有些 WAF/前端會擋掉沒有 UA 的請求 (403)
         req.Timeout = 120000; // 2 min — AI 可能要想久
+        // 不送 "Expect: 100-continue" — 部分反向代理/前端會對它回 403/417
+        try { req.ServicePoint.Expect100Continue = false; } catch { }
 
         if (req.Method == "POST" || req.Method == "PUT")
         {
