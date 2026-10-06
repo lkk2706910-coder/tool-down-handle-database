@@ -527,13 +527,7 @@
     span.className = 'col-title';
     span.contentEditable = 'true';
     span.textContent = title;
-    const remove = document.createElement('button');
-    remove.className = 'remove-col';
-    remove.title = '刪除此欄位';
-    remove.textContent = '✕';
-    remove.addEventListener('click', () => removeColumn(th));
     th.appendChild(span);
-    th.appendChild(remove);
     return th;
   }
 
