@@ -343,6 +343,7 @@
   <div class="tabs" id="tabs">
     <button class="tab active" data-key="tooldown">Tool Down Handle Database</button>
     <button class="tab" data-key="particle">Particle Lesson Learn</button>
+    <button class="tab" data-key="rules">T_EQ1 內規</button>
   </div>
 
   <h1 id="pageTitle">Tool Down Handle Database</h1>
@@ -428,6 +429,15 @@
   const tbody = table.querySelector('tbody');
 
   let searchActive = false;   // 搜尋進行中時, 表格維持「展開」狀態 (不合併 station)
+
+  // ===== 分頁設定 (allowColDelete: 該分頁的欄位標題是否顯示刪除鈕) =====
+  const TABS = {
+    tooldown: { title: 'Tool Down Handle Database' },
+    particle: { title: 'Particle Lesson Learn' },
+    rules:    { title: 'T_EQ1 內規', allowColDelete: true }
+  };
+  let currentKey = 'tooldown';
+  function dataUrl(key) { return 'data_store.aspx?key=' + encodeURIComponent(key); }
 
   function headerTitles() {
     return Array.from(headerRow.querySelectorAll('.col-title')).map(s => s.textContent.trim());
@@ -529,6 +539,15 @@
     span.contentEditable = 'true';
     span.textContent = title;
     th.appendChild(span);
+    // 只有允許刪欄的分頁 (如 T_EQ1 內規) 才顯示刪除鈕
+    if (TABS[currentKey] && TABS[currentKey].allowColDelete) {
+      const remove = document.createElement('button');
+      remove.className = 'remove-col';
+      remove.title = '刪除此欄位';
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => removeColumn(th));
+      th.appendChild(remove);
+    }
     return th;
   }
 
@@ -677,14 +696,7 @@
   tbody.addEventListener('focusout', afterEdit);
   headerRow.addEventListener('focusout', afterEdit);
 
-  // ===== 分頁 + 資料持久化 (data_store.aspx?key=<tab> <-> data_<tab>.json) =====
-  const TABS = {
-    tooldown: { title: 'Tool Down Handle Database' },
-    particle: { title: 'Particle Lesson Learn' }
-  };
-  let currentKey = 'tooldown';
-  function dataUrl(key) { return 'data_store.aspx?key=' + encodeURIComponent(key); }
-
+  // ===== 資料持久化 (data_store.aspx?key=<tab> <-> data_<tab>.json) =====
   const statusEl = document.getElementById('saveStatus');
   let saveTimer = null;
   let suppressSave = false;   // 載入/渲染期間不要觸發存檔
@@ -1023,6 +1035,15 @@
           'Action': ['PA-3 NG trouble shooting guide'],
           '機會點': ''
         }
+      ]
+    },
+    rules: {
+      title: 'T_EQ1 內規',
+      headers: ['項目', '內容'],
+      rows: [
+        { '項目': '', '內容': '' },
+        { '項目': '', '內容': '' },
+        { '項目': '', '內容': '' }
       ]
     }
   };
